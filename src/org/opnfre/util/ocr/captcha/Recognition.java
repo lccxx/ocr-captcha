@@ -346,26 +346,25 @@ public class Recognition {
 		// 纵向扫描分割行
 		int prevSplitPosX = 0;
 		for (int x = 0; x < grid[0].length; x++) {
-			boolean bgLine = true;
+			int bgLine = 0;
 			for (int y = 0; y < grid.length; y++) {
 				if (bgPx != grid[y][x]) {
-					bgLine = false;
-					break;
+					bgLine++;
 				}
 			}
-			if (!bgLine)
+			if (bgLine > 1)
 				continue;
 			int splitX = x;
 			// 继续扫描分割行，直到找到一个不是分割行的行
+			bgLine = 0;
 			for (; x < grid[0].length; x++) {
 				for (int y = 0; y < grid.length; y++) {
 					if (bgPx != grid[y][x]) {
-						bgLine = false;
-						break;
+						bgLine++;
 					}
 				}
-				if (!bgLine)
-					break;
+				if (bgLine > 1)
+					continue;
 			}
 			gridPxSplit.add(getSubPxGrid(grid, prevSplitPosX, splitX));
 			prevSplitPosX = x;
