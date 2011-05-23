@@ -76,10 +76,10 @@ public class Recognition {
 	private static void display(List<List<Integer>> onePxGrid) {
 		for (int y = 0; y < onePxGrid.size(); y++) {
 			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
-				if (onePxGrid.get(y).get(x) == 1)
-					System.out.print(' ');
-				else
+				if (onePxGrid.get(y).get(x) == 0)
 					System.out.print(onePxGrid.get(y).get(x));
+				else
+					System.out.print(' ');
 			}
 			System.out.println();
 		}
