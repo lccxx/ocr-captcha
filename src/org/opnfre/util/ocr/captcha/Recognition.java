@@ -3,8 +3,10 @@ package org.opnfre.util.ocr.captcha;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.awt.image.PixelGrabber;
-import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -23,7 +25,7 @@ public class Recognition {
 
 	private static Connection conn;
 
-	private String filename;
+	private InputStream in;
 
 	private static Map<List<List<Integer>>, String> pxGridMem;
 
@@ -46,9 +48,13 @@ public class Recognition {
 			e.printStackTrace();
 		}
 	}
+	
+	public Recognition(InputStream in) {
+		this.in = in;
+	}
 
-	public Recognition(String filename) {
-		this.filename = filename;
+	public Recognition(String filename) throws FileNotFoundException {
+		this.in = new FileInputStream(filename);
 	}
 
 	private static void addPxGrid(List<List<Integer>> onePxGrid, String ch)
@@ -195,8 +201,8 @@ public class Recognition {
 	 * @throws IOException
 	 *             - 如果图片文件读取错误
 	 */
-	private int[][] getPxGrid(String filename) throws IOException {
-		BufferedImage image = ImageIO.read(new File(filename));
+	private int[][] getPxGrid(InputStream in) throws IOException {
+		BufferedImage image = ImageIO.read(in);
 		int iw = image.getWidth();
 		int ih = image.getHeight();
 		int[][] grid = new int[ih][iw];
@@ -243,7 +249,7 @@ public class Recognition {
 
 	public String go() throws IOException, SQLException {
 		StringBuilder result = new StringBuilder();
-		int[][] grid = getPxGrid(filename);
+		int[][] grid = getPxGrid(in);
 		int[][] gridPxAbs = absPxGrid(grid, 2);
 		int[][] gridPxPri = cropPxGrid(gridPxAbs);
 		List<List<List<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
@@ -281,7 +287,8 @@ public class Recognition {
 	 * @param grid
 	 *            - 单个字符的像素网格
 	 * @return 匹配到的字符
-	 * @throws SQLException - 如果存储目测结果时出错
+	 * @throws SQLException
+	 *             - 如果存储目测结果时出错
 	 */
 	private String matching(List<List<Integer>> grid) throws SQLException {
 		String ch = "";
