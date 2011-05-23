@@ -22,12 +22,16 @@ import javax.imageio.ImageIO;
 
 public class Recognition {
 	private Float accuracy = new Float(0.9);
-	
-	private int bgPx = 1;
+
+	private int bgPx = 2;
 
 	private static Connection conn;
 
 	private InputStream in;
+
+	private int level = 3;
+
+	private int noise = 1;
 
 	private static Map<List<List<Integer>>, String> pxGridMem;
 
@@ -50,7 +54,7 @@ public class Recognition {
 			e.printStackTrace();
 		}
 	}
-	
+
 	public Recognition(InputStream in) {
 		this.in = in;
 	}
@@ -71,18 +75,6 @@ public class Recognition {
 		}
 		pxGridIns.setString(2, pxgrid.toString());
 		pxGridIns.execute();
-	}
-
-	private static void display(List<List<Integer>> onePxGrid) {
-		for (int y = 0; y < onePxGrid.size(); y++) {
-			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
-				if (onePxGrid.get(y).get(x) == 0)
-					System.out.print(onePxGrid.get(y).get(x));
-				else
-					System.out.print(' ');
-			}
-			System.out.println();
-		}
 	}
 
 	/**
@@ -194,6 +186,28 @@ public class Recognition {
 		return gridPxPri;
 	}
 
+	private int[][] dieNoise(int[][] grid) {
+		int[][] gridPxPri = new int[grid.length][grid[0].length];
+		for (int y = 0; y < grid.length; y++) {
+			for (int x = 0; x < grid[0].length; x++) {
+				gridPxPri[y][x] = grid[y][x] == noise ? bgPx : grid[y][x];
+			}
+		}
+		return gridPxPri;
+	}
+
+	private static void display(List<List<Integer>> onePxGrid) {
+		for (int y = 0; y < onePxGrid.size(); y++) {
+			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
+				if (onePxGrid.get(y).get(x) == 0)
+					System.out.print(onePxGrid.get(y).get(x));
+				else
+					System.out.print(' ');
+			}
+			System.out.println();
+		}
+	}
+
 	/**
 	 * 获取图片的像素网格（二维数组）
 	 * 
@@ -252,8 +266,9 @@ public class Recognition {
 	public String go() throws IOException, SQLException {
 		StringBuilder result = new StringBuilder();
 		int[][] grid = getPxGrid(in);
-		int[][] gridPxAbs = absPxGrid(grid, 2);
-		int[][] gridPxPri = cropPxGrid(gridPxAbs);
+		int[][] gridPxAbs = absPxGrid(grid, level);
+		int[][] gridPxNoNoise = dieNoise(gridPxAbs);
+		int[][] gridPxPri = cropPxGrid(gridPxNoNoise);
 		List<List<List<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
 		for (int i = 0; i < gridPxSplit.size(); i++)
 			result.append(matching(gridPxSplit.get(i)));
@@ -346,25 +361,26 @@ public class Recognition {
 		// 纵向扫描分割行
 		int prevSplitPosX = 0;
 		for (int x = 0; x < grid[0].length; x++) {
-			int bgLine = 0;
+			boolean bgLine = true;
 			for (int y = 0; y < grid.length; y++) {
 				if (bgPx != grid[y][x]) {
-					bgLine++;
+					bgLine = false;
+					break;
 				}
 			}
-			if (bgLine > 1)
+			if (!bgLine)
 				continue;
 			int splitX = x;
 			// 继续扫描分割行，直到找到一个不是分割行的行
-			bgLine = 0;
 			for (; x < grid[0].length; x++) {
 				for (int y = 0; y < grid.length; y++) {
 					if (bgPx != grid[y][x]) {
-						bgLine++;
+						bgLine = false;
+						break;
 					}
 				}
-				if (bgLine > 1)
-					continue;
+				if (!bgLine)
+					break;
 			}
 			gridPxSplit.add(getSubPxGrid(grid, prevSplitPosX, splitX));
 			prevSplitPosX = x;
