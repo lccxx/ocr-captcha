@@ -21,6 +21,8 @@ import java.util.Scanner;
 import javax.imageio.ImageIO;
 
 public class Recognition {
+	private Float accuracy = new Float(0.9);
+	
 	private int bgPx = 1;
 
 	private static Connection conn;
@@ -321,7 +323,7 @@ public class Recognition {
 		}
 		display(grid);
 		System.out.println("最匹配的结果：" + best);
-		if (best == null || best.getKey().compareTo(new Float(0.8)) < 1) {
+		if (best == null || best.getKey().compareTo(accuracy) < 1) {
 			System.out.println("没有匹配项目，请输入目测结果：");
 			Scanner cin = new Scanner(System.in);
 			ch = cin.nextLine();
