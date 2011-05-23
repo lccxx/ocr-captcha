@@ -5,54 +5,76 @@ import java.awt.image.ColorModel;
 import java.awt.image.PixelGrabber;
 import java.io.File;
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
 
 import javax.imageio.ImageIO;
 
 public class Recognition {
 	private int bgPx = 1;
 
+	private static Connection conn;
+
 	private String filename;
+
+	private static Map<List<List<Integer>>, String> pxGridMem;
+
+	private static PreparedStatement pxGridSel;
+	private static String pxGridSelSql = "SELECT * FROM pxgrid";
+
+	private static PreparedStatement pxGridIns;
+	private static String pxGridInsSql = "INSERT INTO `pxgrid` (`char`, `pxgrid`) "
+			+ "VALUES(?, ?)";
+
+	static {
+		try {
+			conn = getDBConn();
+			pxGridSel = conn.prepareStatement(pxGridSelSql);
+			pxGridIns = conn.prepareStatement(pxGridInsSql);
+			updatePxGridMem();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
 
 	public Recognition(String filename) {
 		this.filename = filename;
 	}
 
-	public String go() throws IOException {
-		String result = "";
-		int[][] grid = getPxGrid(filename);
-		int[][] gridPxAbs = absPxGrid(grid, 2);
-		int[][] gridPxPri = cropPxGrid(gridPxAbs);
-		ArrayList<ArrayList<ArrayList<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
-
-		System.out.println("图片被抽象后（抽象像素网格）：");
-		for (int y = 0; y < gridPxAbs.length; y++) {
-			for (int x = 0; x < gridPxAbs[0].length; x++)
-				System.out.print(gridPxAbs[y][x]);
-			System.out.println();
+	private static void addPxGrid(List<List<Integer>> onePxGrid, String ch)
+			throws SQLException {
+		pxGridMem.put(onePxGrid, ch);
+		pxGridIns.setString(1, ch);
+		StringBuilder pxgrid = new StringBuilder();
+		for (int y = 0; y < onePxGrid.size(); y++) {
+			for (int x = 0; x < onePxGrid.get(y).size(); x++)
+				pxgrid.append(onePxGrid.get(y).get(x).toString());
+			pxgrid.append("\n");
 		}
+		pxGridIns.setString(2, pxgrid.toString());
+		pxGridIns.execute();
+	}
 
-		System.out.println("抽象像素网格被裁切后：");
-		for (int y = 0; y < gridPxPri.length; y++) {
-			for (int x = 0; x < gridPxPri[0].length; x++)
-				System.out.print(gridPxPri[y][x]);
-			System.out.println();
-		}
-
-		System.out.println("拆分裁切后的抽象像素网格：");
-		for (int i = 0; i < gridPxSplit.size(); i++) {
-			for (int y = 0; y < gridPxSplit.get(i).size(); y++) {
-				for (int x = 0; x < gridPxSplit.get(i).get(y).size(); x++) {
-					if (gridPxSplit.get(i).get(y).get(x)==0) 
-						System.out.print(gridPxSplit.get(i).get(y).get(x));
-					else
-						System.out.print(' ');
-				}
-				System.out.println();
+	private static void display(List<List<Integer>> onePxGrid) {
+		for (int y = 0; y < onePxGrid.size(); y++) {
+			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
+				if (onePxGrid.get(y).get(x) == 1)
+					System.out.print(' ');
+				else
+					System.out.print(onePxGrid.get(y).get(x));
 			}
 			System.out.println();
 		}
-		return result;
 	}
 
 	/**
@@ -70,6 +92,15 @@ public class Recognition {
 			for (int x = 0; x < grid[0].length; x++)
 				gridPxAbs[y][x] = hashPixel(grid[y][x], level);
 		return gridPxAbs;
+	}
+
+	private static Connection getDBConn() throws ClassNotFoundException,
+			SQLException {
+		String dirver = "org.sqlite.JDBC";
+		String jdbcURL = "jdbc:sqlite:/home/liuchong/.data/ocr-captcha/"
+				+ "ocr-captcha.sqlite";
+		Class.forName(dirver);
+		return DriverManager.getConnection(jdbcURL);
 	}
 
 	/**
@@ -190,14 +221,17 @@ public class Recognition {
 
 	/**
 	 * 提取指定范围的内的子像素网格
-	 * @param grid - 父像素网格
-	 * @param s - 开始索引（横坐标）
-	 * @param e - 结束（横坐标）（不包含）
+	 * 
+	 * @param grid
+	 *            - 父像素网格
+	 * @param s
+	 *            - 开始索引（横坐标）
+	 * @param e
+	 *            - 结束（横坐标）（不包含）
 	 * @return 指定范围的内的 子 像素网格
 	 */
-	private ArrayList<ArrayList<Integer>> getSubPxGrid(int[][] grid, int s,
-			int e) {
-		ArrayList<ArrayList<Integer>> oneCharGrid = new ArrayList<ArrayList<Integer>>();
+	private List<List<Integer>> getSubPxGrid(int[][] grid, int s, int e) {
+		List<List<Integer>> oneCharGrid = new ArrayList<List<Integer>>();
 		for (int sy = 0; sy < grid.length; sy++) {
 			ArrayList<Integer> oneLine = new ArrayList<Integer>(e - s);
 			for (int sx = s; sx < e; sx++)
@@ -205,6 +239,17 @@ public class Recognition {
 			oneCharGrid.add(oneLine);
 		}
 		return oneCharGrid;
+	}
+
+	public String go() throws IOException, SQLException {
+		StringBuilder result = new StringBuilder();
+		int[][] grid = getPxGrid(filename);
+		int[][] gridPxAbs = absPxGrid(grid, 2);
+		int[][] gridPxPri = cropPxGrid(gridPxAbs);
+		List<List<List<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
+		for (int i = 0; i < gridPxSplit.size(); i++)
+			result.append(matching(gridPxSplit.get(i)));
+		return result.toString();
 	}
 
 	/**
@@ -231,14 +276,64 @@ public class Recognition {
 	}
 
 	/**
+	 * 拆分裁切像素网格的匹配
+	 * 
+	 * @param grid
+	 *            - 单个字符的像素网格
+	 * @return 匹配到的字符
+	 * @throws SQLException - 如果存储目测结果时出错
+	 */
+	private String matching(List<List<Integer>> grid) throws SQLException {
+		String ch = "";
+		int pxCount = grid.size() * grid.get(0).size();
+		Map<Float, String> result = new HashMap<Float, String>();
+		for (Map.Entry<List<List<Integer>>, String> one : pxGridMem.entrySet()) {
+			List<List<Integer>> oneGrid = one.getKey();
+			int same = 0;
+			int onePxCount = oneGrid.size() * oneGrid.get(0).size();
+			for (int y = 0; y < oneGrid.size() && y < grid.size(); y++) {
+				for (int x = 0; x < oneGrid.get(y).size(); x++) {
+					if (x >= grid.get(y).size())
+						break;
+					if (oneGrid.get(y).get(x).equals(grid.get(y).get(x)))
+						same++;
+				}
+			}
+			Float oneResult = new Float((same * 1.0)
+					/ ((pxCount + onePxCount) / 2.0));
+			result.put(oneResult, one.getValue());
+		}
+		Map.Entry<Float, String> best = null;
+		for (Map.Entry<Float, String> one : result.entrySet()) {
+			if (best == null) {
+				best = one;
+				continue;
+			}
+			if (best.getKey() < one.getKey())
+				best = one;
+		}
+		display(grid);
+		System.out.println("最匹配的结果：" + best);
+		if (best == null || best.getKey().compareTo(new Float(0.8)) < 1) {
+			System.out.println("没有匹配项目，请输入目测结果：");
+			Scanner cin = new Scanner(System.in);
+			ch = cin.nextLine();
+			addPxGrid(grid, ch);
+		} else {
+			ch = best.getValue();
+		}
+		return ch;
+	}
+
+	/**
 	 * 拆分像素网格
 	 * 
 	 * @param grid
 	 *            - 像素网格（最好是先抽象后裁切过的）
 	 * @return 拆分后的像素网格
 	 */
-	private ArrayList<ArrayList<ArrayList<Integer>>> splitPxGrid(int[][] grid) {
-		ArrayList<ArrayList<ArrayList<Integer>>> gridPxSplit = new ArrayList<ArrayList<ArrayList<Integer>>>();
+	private List<List<List<Integer>>> splitPxGrid(int[][] grid) {
+		List<List<List<Integer>>> gridPxSplit = new ArrayList<List<List<Integer>>>();
 		// 纵向扫描分割行
 		int prevSplitPosX = 0;
 		for (int x = 0; x < grid[0].length; x++) {
@@ -269,10 +364,33 @@ public class Recognition {
 		gridPxSplit.add(getSubPxGrid(grid, prevSplitPosX, grid[0].length));
 		return gridPxSplit;
 	}
-	
-	public static void main(String args[]) throws IOException {
-		String filename = "/home/liuchong/Pictures/Web/captcha.png";
-		Recognition r = new Recognition(filename);
-		r.go();
+
+	private static void updatePxGridMem() throws SQLException {
+		ResultSet rs = pxGridSel.executeQuery();
+		Map<List<List<Integer>>, String> newPxGridMem;
+		newPxGridMem = new HashMap<List<List<Integer>>, String>();
+		while (rs.next()) {
+			String ch = rs.getString("char");
+			String[] pxGrid = rs.getString("pxgrid").split("\n");
+			List<List<Integer>> onePxGrid = new ArrayList<List<Integer>>();
+			for (int i = 0; i < pxGrid.length; i++) {
+				List<Integer> line = new ArrayList<Integer>();
+				char[] pxLine = pxGrid[i].toCharArray();
+				for (int j = 0; j < pxLine.length; j++)
+					line.add(new Integer(pxLine[j] + ""));
+				onePxGrid.add(line);
+			}
+			newPxGridMem.put(onePxGrid, ch);
+		}
+		rs.close();
+		pxGridMem = newPxGridMem;
+	}
+
+	public static void main(String args[]) throws IOException, SQLException {
+		ArrayList<String> captchas = new ArrayList<String>();
+		captchas.add("/home/liuchong/Pictures/Web/captcha.png");
+		for (String filename : captchas) {
+			System.out.println("结果：" + new Recognition(filename).go());
+		}
 	}
 }
