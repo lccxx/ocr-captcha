@@ -1,5 +1,6 @@
 package org.opnfre.util.ocr.captcha;
 
+import java.io.File;
 import java.io.IOException;
 import java.sql.SQLException;
 
@@ -21,9 +22,9 @@ public class RecognitionTest extends TestCase {
 	
 	public void testRecognition() throws IOException, InterruptedException,
 			SQLException {
-		String filename = "/home/liuchong/Pictures/Web/captcha.png";
-		String captcha = "v6ta";
-		Recognition r = new Recognition(filename);
+		File file = new File("/home/liuchong/Pictures/Web/captcha/v6ta");
+		String captcha = file.getName();
+		Recognition r = new Recognition(file);
 		String result = r.go();
 		assertTrue(result.equals(captcha));
 	}
