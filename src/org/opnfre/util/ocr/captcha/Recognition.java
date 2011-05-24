@@ -98,7 +98,7 @@ public class Recognition {
 	 *            - 抽象等级，值越小抽象层次越高，最小 2
 	 * @return 抽象后的像素网格
 	 */
-	private int[][] absPxGrid(int[][] grid, int level) {
+	public int[][] absPxGrid(int[][] grid, int level) {
 		int[][] gridPxAbs = new int[grid.length][grid[0].length];
 		for (int y = 0; y < grid.length; y++)
 			for (int x = 0; x < grid[0].length; x++)
@@ -113,7 +113,7 @@ public class Recognition {
 	 *            - 待裁切的像素网格
 	 * @return 裁切后的像素网格
 	 */
-	private int[][] cropPxGrid(int[][] grid) {
+	public int[][] cropPxGrid(int[][] grid) {
 		int[][] gridPxPri = grid;
 		// 从上面裁切
 		while (true) {
@@ -189,7 +189,19 @@ public class Recognition {
 		return gridPxPri;
 	}
 
-	private void display(List<List<Integer>> onePxGrid) {
+	public void display(int[][] onePxGrid) {
+		for (int y = 0; y < onePxGrid.length; y++) {
+			for (int x = 0; x < onePxGrid[y].length; x++) {
+				if (onePxGrid[y][x] == forePx)
+					System.out.print(onePxGrid[y][x]);
+				else
+					System.out.print(' ');
+			}
+			System.out.println();
+		}
+	}
+	
+	public void display(List<List<Integer>> onePxGrid) {
 		for (int y = 0; y < onePxGrid.size(); y++) {
 			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
 				if (onePxGrid.get(y).get(x) == forePx)
@@ -201,6 +213,10 @@ public class Recognition {
 		}
 	}
 
+	public int getAbsLevel() {
+		return absLevel;
+	}
+
 	/**
 	 * 获取图片的像素网格（二维数组）
 	 * 
@@ -210,8 +226,8 @@ public class Recognition {
 	 * @throws IOException
 	 *             - 如果图片文件读取错误
 	 */
-	private int[][] getPxGrid(InputStream in) throws IOException {
-		BufferedImage image = ImageIO.read(in);
+	public int[][] getPxGrid() throws IOException {
+		BufferedImage image = ImageIO.read(captchaIn);
 		int iw = image.getWidth();
 		int ih = image.getHeight();
 		int[][] grid = new int[ih][iw];
@@ -231,7 +247,7 @@ public class Recognition {
 				x = 0;
 			}
 		}
-		in.close();
+		captchaIn.close();
 		return grid;
 	}
 
@@ -258,8 +274,8 @@ public class Recognition {
 	}
 
 	public String go() throws IOException, SQLException {
-		int[][] grid = getPxGrid(captchaIn);
-		int[][] gridPxAbs = absPxGrid(grid, absLevel);
+		int[][] grid = getPxGrid();
+		int[][] gridPxAbs = absPxGrid(grid, getAbsLevel());
 		int[][] gridPxPri = cropPxGrid(gridPxAbs);
 		List<List<List<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
 		StringBuilder result = new StringBuilder();
@@ -354,6 +370,10 @@ public class Recognition {
 		return ch;
 	}
 
+	public void setAbsLevel(int absLevel) {
+		this.absLevel = absLevel;
+	}
+
 	/**
 	 * 拆分像素网格
 	 * 
@@ -361,7 +381,7 @@ public class Recognition {
 	 *            - 像素网格（最好是先抽象后裁切过的）
 	 * @return 拆分后的像素网格
 	 */
-	private List<List<List<Integer>>> splitPxGrid(int[][] grid) {
+	public List<List<List<Integer>>> splitPxGrid(int[][] grid) {
 		List<List<List<Integer>>> gridPxSplit = new ArrayList<List<List<Integer>>>();
 		// 纵向扫描分割行
 		int prevSplitPosX = 0;
@@ -428,8 +448,18 @@ public class Recognition {
 	}
 
 	public static void main(String args[]) throws IOException, SQLException {
-		ArrayList<String> captchas = new ArrayList<String>();
-		captchas.add("/home/liuchong/Pictures/Web/captcha/v6ta");
-
+		File[] captchas = new File("/home/liuchong/Pictures/Web/captcha/")
+				.listFiles();
+		for (File captcha : captchas) {
+			Recognition r = new Recognition(captcha);
+			int[][] grid = r.getPxGrid();
+			int[][] gridPxAbs = r.absPxGrid(grid, r.getAbsLevel());
+			int[][] gridPxPri = r.cropPxGrid(gridPxAbs);
+			List<List<List<Integer>>> gridPxSplit = r.splitPxGrid(gridPxPri);
+			for (List<List<Integer>> one : gridPxSplit) {
+				r.display(one);
+				System.out.println("\n\n");
+			}
+		}
 	}
 }
