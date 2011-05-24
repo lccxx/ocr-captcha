@@ -3,6 +3,7 @@ package org.opnfre.util.ocr.captcha;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.awt.image.PixelGrabber;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -25,13 +26,13 @@ public class Recognition {
 
 	private int bgPx = 2;
 
-	private static Connection conn;
+	private static Connection dbConn;
 
-	private InputStream in;
+	private int fgPx = 0;
+	
+	private InputStream captchaIn;
 
-	private int level = 3;
-
-	private int noise = 1;
+	private int absLevel = 3;
 
 	private static Map<List<List<Integer>>, String> pxGridMem;
 
@@ -44,9 +45,9 @@ public class Recognition {
 
 	static {
 		try {
-			conn = getDBConn();
-			pxGridSel = conn.prepareStatement(pxGridSelSql);
-			pxGridIns = conn.prepareStatement(pxGridInsSql);
+			dbConn = getDBConn();
+			pxGridSel = dbConn.prepareStatement(pxGridSelSql);
+			pxGridIns = dbConn.prepareStatement(pxGridInsSql);
 			updatePxGridMem();
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
@@ -56,11 +57,11 @@ public class Recognition {
 	}
 
 	public Recognition(InputStream in) {
-		this.in = in;
+		captchaIn = in;
 	}
 
-	public Recognition(String filename) throws FileNotFoundException {
-		this.in = new FileInputStream(filename);
+	public Recognition(File file) throws FileNotFoundException {
+		captchaIn = new FileInputStream(file);
 	}
 
 	private static void addPxGrid(List<List<Integer>> onePxGrid, String ch)
@@ -186,16 +187,6 @@ public class Recognition {
 		return gridPxPri;
 	}
 
-	private int[][] dieNoise(int[][] grid) {
-		int[][] gridPxPri = new int[grid.length][grid[0].length];
-		for (int y = 0; y < grid.length; y++) {
-			for (int x = 0; x < grid[0].length; x++) {
-				gridPxPri[y][x] = grid[y][x] == noise ? bgPx : grid[y][x];
-			}
-		}
-		return gridPxPri;
-	}
-
 	private static void display(List<List<Integer>> onePxGrid) {
 		for (int y = 0; y < onePxGrid.size(); y++) {
 			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
@@ -238,6 +229,7 @@ public class Recognition {
 				x = 0;
 			}
 		}
+		in.close();
 		return grid;
 	}
 
@@ -265,10 +257,9 @@ public class Recognition {
 
 	public String go() throws IOException, SQLException {
 		StringBuilder result = new StringBuilder();
-		int[][] grid = getPxGrid(in);
-		int[][] gridPxAbs = absPxGrid(grid, level);
-		int[][] gridPxNoNoise = dieNoise(gridPxAbs);
-		int[][] gridPxPri = cropPxGrid(gridPxNoNoise);
+		int[][] grid = getPxGrid(captchaIn);
+		int[][] gridPxAbs = absPxGrid(grid, absLevel);
+		int[][] gridPxPri = cropPxGrid(gridPxAbs);
 		List<List<List<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
 		for (int i = 0; i < gridPxSplit.size(); i++)
 			result.append(matching(gridPxSplit.get(i)));
@@ -412,9 +403,7 @@ public class Recognition {
 
 	public static void main(String args[]) throws IOException, SQLException {
 		ArrayList<String> captchas = new ArrayList<String>();
-		captchas.add("/home/liuchong/Pictures/Web/captcha.png");
-		for (String filename : captchas) {
-			System.out.println("结果：" + new Recognition(filename).go());
-		}
+		captchas.add("/home/liuchong/Pictures/Web/captcha/v6ta");
+		
 	}
 }
