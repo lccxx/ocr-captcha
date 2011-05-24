@@ -22,30 +22,31 @@ import java.util.Scanner;
 import javax.imageio.ImageIO;
 
 public class Recognition {
-	private Float accuracy = new Float(0.9);
-
-	private int bgPx = 2;
-
-	private static Connection dbConn;
-
-	private int fgPx = 0;
-	
-	private InputStream captchaIn;
-
 	private int absLevel = 3;
 
-	private static Map<List<List<Integer>>, String> pxGridMem;
+	private Float accuracy = new Float(0.9);
+
+	private InputStream captchaIn;
+
+	private int forePx = 0;
+
+	private static Map<Integer, List<List<Integer>>> pxGridMem;
+	private static Map<Integer, String> pxGridMemChar;
+	private static Map<Integer, Integer> pxGridMemForePx;
 
 	private static PreparedStatement pxGridSel;
 	private static String pxGridSelSql = "SELECT * FROM pxgrid";
 
 	private static PreparedStatement pxGridIns;
-	private static String pxGridInsSql = "INSERT INTO `pxgrid` (`char`, `pxgrid`) "
-			+ "VALUES(?, ?)";
+	private static String pxGridInsSql = "INSERT INTO `pxgrid` "
+			+ "(`char`, `pxGrid`, `forePx`) VALUES(?, ?, ?)";
 
 	static {
 		try {
-			dbConn = getDBConn();
+			Class.forName("org.sqlite.JDBC");
+			String jdbcURL = "jdbc:sqlite:/home/liuchong/.data/"
+					+ "ocr-captcha/ocr-captcha.sqlite";
+			Connection dbConn = DriverManager.getConnection(jdbcURL);
 			pxGridSel = dbConn.prepareStatement(pxGridSelSql);
 			pxGridIns = dbConn.prepareStatement(pxGridInsSql);
 			updatePxGridMem();
@@ -64,9 +65,18 @@ public class Recognition {
 		captchaIn = new FileInputStream(file);
 	}
 
-	private static void addPxGrid(List<List<Integer>> onePxGrid, String ch)
+	private void addPxGrid(List<List<Integer>> onePxGrid, String ch)
 			throws SQLException {
-		pxGridMem.put(onePxGrid, ch);
+		int maxIndex = 0;
+		for (Map.Entry<Integer, Integer> one : pxGridMemForePx.entrySet()) {
+			int index = one.getKey();
+			if (one.getKey() > maxIndex)
+				maxIndex = index;
+		}
+		maxIndex++;
+		pxGridMem.put(maxIndex, onePxGrid);
+		pxGridMemChar.put(maxIndex, ch);
+		pxGridMemForePx.put(maxIndex, forePx);
 		pxGridIns.setString(1, ch);
 		StringBuilder pxgrid = new StringBuilder();
 		for (int y = 0; y < onePxGrid.size(); y++) {
@@ -75,6 +85,7 @@ public class Recognition {
 			pxgrid.append("\n");
 		}
 		pxGridIns.setString(2, pxgrid.toString());
+		pxGridIns.setInt(3, forePx);
 		pxGridIns.execute();
 	}
 
@@ -95,15 +106,6 @@ public class Recognition {
 		return gridPxAbs;
 	}
 
-	private static Connection getDBConn() throws ClassNotFoundException,
-			SQLException {
-		String dirver = "org.sqlite.JDBC";
-		String jdbcURL = "jdbc:sqlite:/home/liuchong/.data/ocr-captcha/"
-				+ "ocr-captcha.sqlite";
-		Class.forName(dirver);
-		return DriverManager.getConnection(jdbcURL);
-	}
-
 	/**
 	 * 对像素网格进行裁切
 	 * 
@@ -117,7 +119,7 @@ public class Recognition {
 		while (true) {
 			boolean bgLine = true;
 			for (int x = 0; x < gridPxPri[0].length; x++) {
-				if (bgPx != gridPxPri[0][x]) {
+				if (forePx == gridPxPri[0][x]) {
 					bgLine = false;
 					break;
 				}
@@ -135,7 +137,7 @@ public class Recognition {
 			int lastYIndex = gridPxPri.length - 1;
 			boolean bgLine = true;
 			for (int x = gridPxPri[lastYIndex].length - 1; x >= 0; x--) {
-				if (bgPx != gridPxPri[lastYIndex][x]) {
+				if (forePx == gridPxPri[lastYIndex][x]) {
 					bgLine = false;
 					break;
 				}
@@ -152,7 +154,7 @@ public class Recognition {
 		while (true) {
 			boolean bgLine = true;
 			for (int y = 0; y < gridPxPri.length; y++) {
-				if (bgPx != gridPxPri[y][0]) {
+				if (forePx == gridPxPri[y][0]) {
 					bgLine = false;
 					break;
 				}
@@ -171,7 +173,7 @@ public class Recognition {
 			int lastXIndex = gridPxPri[0].length - 1;
 			boolean bgLine = true;
 			for (int y = lastYIndex; y >= 0; y--) {
-				if (bgPx != gridPxPri[y][lastXIndex]) {
+				if (forePx == gridPxPri[y][lastXIndex]) {
 					bgLine = false;
 					break;
 				}
@@ -187,10 +189,10 @@ public class Recognition {
 		return gridPxPri;
 	}
 
-	private static void display(List<List<Integer>> onePxGrid) {
+	private void display(List<List<Integer>> onePxGrid) {
 		for (int y = 0; y < onePxGrid.size(); y++) {
 			for (int x = 0; x < onePxGrid.get(y).size(); x++) {
-				if (onePxGrid.get(y).get(x) == 0)
+				if (onePxGrid.get(y).get(x) == forePx)
 					System.out.print(onePxGrid.get(y).get(x));
 				else
 					System.out.print(' ');
@@ -256,11 +258,11 @@ public class Recognition {
 	}
 
 	public String go() throws IOException, SQLException {
-		StringBuilder result = new StringBuilder();
 		int[][] grid = getPxGrid(captchaIn);
 		int[][] gridPxAbs = absPxGrid(grid, absLevel);
 		int[][] gridPxPri = cropPxGrid(gridPxAbs);
 		List<List<List<Integer>>> gridPxSplit = splitPxGrid(gridPxPri);
+		StringBuilder result = new StringBuilder();
 		for (int i = 0; i < gridPxSplit.size(); i++)
 			result.append(matching(gridPxSplit.get(i)));
 		return result.toString();
@@ -299,24 +301,35 @@ public class Recognition {
 	 *             - 如果存储目测结果时出错
 	 */
 	private String matching(List<List<Integer>> grid) throws SQLException {
-		String ch = "";
-		int pxCount = grid.size() * grid.get(0).size();
+		int pxCount = 0;
+		for (int y = 0; y < grid.size(); y++)
+			for (int x = 0; x < grid.get(0).size(); x++)
+				if (grid.get(y).get(x) == forePx)
+					pxCount++;
 		Map<Float, String> result = new HashMap<Float, String>();
-		for (Map.Entry<List<List<Integer>>, String> one : pxGridMem.entrySet()) {
-			List<List<Integer>> oneGrid = one.getKey();
+		for (Map.Entry<Integer, List<List<Integer>>> one : pxGridMem.entrySet()) {
+			Integer oneId = one.getKey();
+			Integer oneForePx = pxGridMemForePx.get(oneId);
+			String oneChar = pxGridMemChar.get(oneId);
+			List<List<Integer>> oneGrid = one.getValue();
+			int onePxCount = 0;
+			for (int y = 0; y < oneGrid.size(); y++)
+				for (int x = 0; x < oneGrid.get(0).size(); x++)
+					if (oneGrid.get(y).get(x).equals(oneForePx))
+						onePxCount++;
 			int same = 0;
-			int onePxCount = oneGrid.size() * oneGrid.get(0).size();
 			for (int y = 0; y < oneGrid.size() && y < grid.size(); y++) {
 				for (int x = 0; x < oneGrid.get(y).size(); x++) {
 					if (x >= grid.get(y).size())
 						break;
-					if (oneGrid.get(y).get(x).equals(grid.get(y).get(x)))
-						same++;
+					if (grid.get(y).get(x) == forePx)
+						if (oneGrid.get(y).get(x).equals(oneForePx))
+							same++;
 				}
 			}
 			Float oneResult = new Float((same * 1.0)
 					/ ((pxCount + onePxCount) / 2.0));
-			result.put(oneResult, one.getValue());
+			result.put(oneResult, oneChar);
 		}
 		Map.Entry<Float, String> best = null;
 		for (Map.Entry<Float, String> one : result.entrySet()) {
@@ -329,6 +342,7 @@ public class Recognition {
 		}
 		display(grid);
 		System.out.println("最匹配的结果：" + best);
+		String ch = "";
 		if (best == null || best.getKey().compareTo(accuracy) < 1) {
 			System.out.println("没有匹配项目，请输入目测结果：");
 			Scanner cin = new Scanner(System.in);
@@ -354,7 +368,7 @@ public class Recognition {
 		for (int x = 0; x < grid[0].length; x++) {
 			boolean bgLine = true;
 			for (int y = 0; y < grid.length; y++) {
-				if (bgPx != grid[y][x]) {
+				if (forePx == grid[y][x]) {
 					bgLine = false;
 					break;
 				}
@@ -365,7 +379,7 @@ public class Recognition {
 			// 继续扫描分割行，直到找到一个不是分割行的行
 			for (; x < grid[0].length; x++) {
 				for (int y = 0; y < grid.length; y++) {
-					if (bgPx != grid[y][x]) {
+					if (forePx == grid[y][x]) {
 						bgLine = false;
 						break;
 					}
@@ -382,28 +396,40 @@ public class Recognition {
 
 	private static void updatePxGridMem() throws SQLException {
 		ResultSet rs = pxGridSel.executeQuery();
-		Map<List<List<Integer>>, String> newPxGridMem;
-		newPxGridMem = new HashMap<List<List<Integer>>, String>();
+		Map<Integer, List<List<Integer>>> newPxGridMem;
+		Map<Integer, String> newPxGridMemChar;
+		Map<Integer, Integer> newPxGridMemForePx;
+		newPxGridMem = new HashMap<Integer, List<List<Integer>>>();
+		newPxGridMemChar = new HashMap<Integer, String>();
+		newPxGridMemForePx = new HashMap<Integer, Integer>();
 		while (rs.next()) {
+			int id = rs.getInt("id");
 			String ch = rs.getString("char");
 			String[] pxGrid = rs.getString("pxgrid").split("\n");
+			int oneForePx = rs.getInt("forePx");
 			List<List<Integer>> onePxGrid = new ArrayList<List<Integer>>();
 			for (int i = 0; i < pxGrid.length; i++) {
 				List<Integer> line = new ArrayList<Integer>();
 				char[] pxLine = pxGrid[i].toCharArray();
-				for (int j = 0; j < pxLine.length; j++)
-					line.add(new Integer(pxLine[j] + ""));
+				for (int j = 0; j < pxLine.length; j++) {
+					Integer onePx = new Integer(pxLine[j] + "");
+					line.add(onePx);
+				}
 				onePxGrid.add(line);
 			}
-			newPxGridMem.put(onePxGrid, ch);
+			newPxGridMem.put(id, onePxGrid);
+			newPxGridMemChar.put(id, ch);
+			newPxGridMemForePx.put(id, oneForePx);
 		}
 		rs.close();
 		pxGridMem = newPxGridMem;
+		pxGridMemChar = newPxGridMemChar;
+		pxGridMemForePx = newPxGridMemForePx;
 	}
 
 	public static void main(String args[]) throws IOException, SQLException {
 		ArrayList<String> captchas = new ArrayList<String>();
 		captchas.add("/home/liuchong/Pictures/Web/captcha/v6ta");
-		
+
 	}
 }
